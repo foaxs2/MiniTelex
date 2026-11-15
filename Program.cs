@@ -78,6 +78,26 @@ static class Program
 
         var tests = new (string input, bool standaloneW, string expected)[]
         {
+            // Kiểm tra lỗi chữ 'ê' trong "Yeeu cầu", "Quyeenf hạn", "giếng", "xòe", "khỏe", "tiếng"
+            ("Yeeu", true, "Yêu"),
+            ("yeeu", true, "yêu"),
+            ("yeue", true, "yêu"),
+            ("yeeus", true, "yếu"),
+            ("yeen", true, "yên"),
+            ("Quyeenf", true, "Quyền"),
+            ("quyeenf", true, "quyền"),
+            ("quyeefn", true, "quyền"),
+            ("quyenef", true, "quyền"),
+            ("quyefne", true, "quyền"),
+            ("quyeets", true, "quyết"),
+            ("gieengs", true, "giếng"),
+            ("nguyeenx", true, "nguyễn"),
+            ("chuyeenr", true, "chuyển"),
+            ("khoer", true, "khỏe"),
+            ("xoef", true, "xòe"),
+            ("tieseng", true, "tiếng"),
+            ("tiefne", true, "tiền"),
+
             // Kiểm tra lỗi bấm nhầm Space rồi Backspace quay lại gõ dấu tiếp ("Tun" + Space + Backspace + "fg" -> "Tùng")
             ("Tun \bfg", true, "Tùng"),
             ("Tung \bf", true, "Tùng"),

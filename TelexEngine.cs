@@ -69,7 +69,7 @@ public sealed class TelexEngine
         "iêu", "ieu", "oai", "oao", "oay", "oeo", "uây", "uay",
         "ươi", "uoi", "ưoi", "uơi",
         "ươu", "uou", "ưou", "uơu",
-        "yêu", "yeu", "ye"
+        "yêu", "yê", "yeu", "ye"
     };
 
     private static Dictionary<char, (int vowelIdx, int toneIdx, bool isUpper)> BuildLookup()
@@ -304,6 +304,26 @@ public sealed class TelexEngine
                 return true;
             }
 
+            // Chặn các từ Tiếng Anh dạng [Nguyên âm i/o/u] + [dấu thanh s/r/f/x/j] + [e]
+            // như "use", "user", "sure", "pure", "more", "core", "rose", "nose", "lose", "hire", "tire", "rise"
+            // (Trong khi vẫn cho phép "xòe", "khỏe", "nhòe", "lòe" vì 'o' và 'e' được gõ trước dấu thanh!)
+            if (lower == 'e' && IsAppendingEAfterSingleTonedVowel())
+            {
+                _buffer.Add(new CharCell(inputChar));
+                _disabledForCurrentWord = true;
+                if (_hasTransformedInCurrentWord)
+                {
+                    string rawStr = _rawWord.ToString();
+                    _buffer.Clear();
+                    foreach (char c in rawStr)
+                        _buffer.Add(new CharCell(c));
+
+                    ComputeDiff(oldWord, rawStr, out backspacesNeeded, out replacementText);
+                    return true;
+                }
+                return false;
+            }
+
             _buffer.Add(new CharCell(inputChar));
             if (CheckEnglishAndRevertIfNeeded(oldWord, out backspacesNeeded, out replacementText))
                 return true;
@@ -407,6 +427,22 @@ public sealed class TelexEngine
     /// "MiniTelex", "David", "Discord", "Server", "Service", "Text", "Soft", "Google", "Windows"...),
     /// tự động khoá Telex cho từ này và hoàn trả lại đúng chữ Tiếng Anh gốc trên màn hình!
     /// </summary>
+    private bool IsAppendingEAfterSingleTonedVowel()
+    {
+        if (_buffer.Count == 0)
+            return false;
+
+        var last = _buffer[^1];
+        if (last.ToneIndex == 0 || last.VowelIndex is not (5 or 6 or 9)) // i, o, u
+            return false;
+
+        // Nếu là 'u' đứng sau 'q' (qu) thì 'u' thuộc phụ âm đầu
+        if (last.VowelIndex == 9 && _buffer.Count == 2 && char.ToLowerInvariant(_buffer[0].CurrentChar) == 'q')
+            return false;
+
+        return true;
+    }
+
     private bool CheckEnglishAndRevertIfNeeded(string oldScreenWord, out int backspaces, out string replacement)
     {
         backspaces = 0;
@@ -525,19 +561,6 @@ public sealed class TelexEngine
             // Nguyên âm "uă" chỉ đi sau "q" (quă), không bao giờ đi sau phụ âm khác
             if (vStr == "uă" && !initial.ToString().Equals("q", StringComparison.OrdinalIgnoreCase))
                 return false;
-
-            // Chặn các từ Tiếng Anh có cấu trúc [Nguyên âm] + [s/r/f/x/j] + [e] như:
-            // "use", "user", "sure", "pure", "more", "core", "rose", "nose", "lose", "hire", "tire", "rise", "wise"
-            // (Vì trong Tiếng Việt không có âm tiết nào gõ dấu thanh xong mới gõ chữ 'e' đơn tạo thành "ue", "oe", "ie")
-            if (activeTone > 0)
-            {
-                if (vStr.Equals("oe", StringComparison.OrdinalIgnoreCase) ||
-                    vStr.Equals("ie", StringComparison.OrdinalIgnoreCase) ||
-                    (vStr.Equals("ue", StringComparison.OrdinalIgnoreCase) && !initial.ToString().Equals("q", StringComparison.OrdinalIgnoreCase)))
-                {
-                    return false;
-                }
-            }
         }
 
         // 3. Kiểm tra phụ âm cuối
