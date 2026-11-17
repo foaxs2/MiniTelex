@@ -67,6 +67,7 @@ public sealed class TelexEngine
         "ua", "uă", "uâ", "ưa", "uê", "ue", "ui", "ưi", "uo", "uô", "uơ", "ưo", "ươ", "ưu", "uu", "uy",
         "uya", "uyê", "uyu", "uye",
         "iêu", "ieu", "oai", "oao", "oay", "oeo", "uây", "uay",
+        "uôi",
         "ươi", "uoi", "ưoi", "uơi",
         "ươu", "uou", "ưou", "uơu",
         "yêu", "yê", "yeu", "ye"

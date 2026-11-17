@@ -78,6 +78,19 @@ static class Program
 
         var tests = new (string input, bool standaloneW, string expected)[]
         {
+            // Kiểm tra chữ 'ô' trong "tôi", "không", "tuổi", "buổi", "cuối", "muỗi", "chuỗi", "nuôi", "suối"
+            ("tooi", true, "tôi"),
+            ("khoong", true, "không"),
+            ("Tuooir", true, "Tuổi"),
+            ("tuooir", true, "tuổi"),
+            ("tuoior", true, "tuổi"),
+            ("tuoiro", true, "tuổi"),
+            ("buooir", true, "buổi"),
+            ("cuoois", true, "cuối"),
+            ("muooix", true, "muỗi"),
+            ("chuooix", true, "chuỗi"),
+            ("nuooi", true, "nuôi"),
+
             // Kiểm tra lỗi chữ 'ê' trong "Yeeu cầu", "Quyeenf hạn", "giếng", "xòe", "khỏe", "tiếng"
             ("Yeeu", true, "Yêu"),
             ("yeeu", true, "yêu"),
