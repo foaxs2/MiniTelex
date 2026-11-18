@@ -54,6 +54,15 @@ public sealed class GameContextDetector
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorInfo(ref CURSORINFO pci);
+
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
@@ -70,11 +79,41 @@ public sealed class GameContextDetector
     private const int GWL_STYLE = -16;
     private const int WS_CAPTION = 0x00C00000;
     private const int WS_THICKFRAME = 0x00040000;
+    private const int CURSOR_SHOWING = 0x00000001;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT
     {
         public int Left, Top, Right, Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int x, y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GUITHREADINFO
+    {
+        public int cbSize;
+        public int flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CURSORINFO
+    {
+        public int cbSize;
+        public int flags;
+        public IntPtr hCursor;
+        public POINT ptScreenPos;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
@@ -200,11 +239,11 @@ public sealed class GameContextDetector
         bool changed = hwnd != CurrentWindowHandle;
         CurrentWindowHandle = hwnd;
 
-        GetWindowThreadProcessId(hwnd, out uint pid);
+        uint threadId = GetWindowThreadProcessId(hwnd, out uint pid);
         string procName = GetProcessNameSafe(pid);
         string title = GetWindowTitleSafe(hwnd);
 
-        bool isGame = DetermineIfGame(hwnd, procName, title);
+        bool isGame = DetermineIfGame(hwnd, threadId, procName, title);
 
         if (procName != CurrentProcessName || isGame != IsCurrentWindowGame || title != CurrentWindowTitle)
         {
@@ -217,7 +256,7 @@ public sealed class GameContextDetector
         return changed;
     }
 
-    private bool DetermineIfGame(IntPtr hwnd, string procName, string title)
+    private bool DetermineIfGame(IntPtr hwnd, uint threadId, string procName, string title)
     {
         if (string.IsNullOrWhiteSpace(procName))
             return false;
@@ -235,11 +274,26 @@ public sealed class GameContextDetector
                 return true;
         }
 
-        // 2. Nếu là ứng dụng Desktop/Trình duyệt/Chat quen thuộc (Chrome, Zalo, Discord...) -> Chắc chắn KHÔNG phải game
+        // 2. Nhận diện Unity Engine:
+        // - Game build độc lập từ Unity luôn có class cửa sổ là "UnityWndClass" -> Luôn là Game
+        // - Unity Editor ("Unity.exe" / class "UnityContainerWndClass"):
+        //   + Khi bấm Play Mode (GameView được focus, con trỏ chuột bị khóa ẩn, hoặc Maximize On Play) -> Chế độ Game (chặn Telex)
+        //   + Khi ở chế độ Edit (Inspector, Hierarchy, Console, Project...) -> Chế độ Desktop (cho phép gõ Telex bình thường)
+        string className = GetWindowClassNameSafe(hwnd);
+        if (string.Equals(className, "UnityWndClass", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (string.Equals(procName, "Unity", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(className, "UnityContainerWndClass", StringComparison.OrdinalIgnoreCase))
+        {
+            return IsUnityEditorInPlayMode(hwnd, threadId);
+        }
+
+        // 3. Nếu là ứng dụng Desktop/Trình duyệt/Chat quen thuộc (Chrome, Zalo, Discord...) -> Chắc chắn KHÔNG phải game
         if (KnownDesktopApps.Contains(procName))
             return false;
 
-        // 3. Nếu nằm trong danh sách các tựa game đã biết (LMHT, TFT, Valorant, CS2, Genshin...) -> Chắc chắn là Game
+        // 4. Nếu nằm trong danh sách các tựa game đã biết (LMHT, TFT, Valorant, CS2, Genshin...) -> Chắc chắn là Game
         if (KnownGameProcesses.Contains(procName))
             return true;
 
@@ -252,12 +306,67 @@ public sealed class GameContextDetector
             return true;
         }
 
-        // 4. Tự động phát hiện mọi tựa game khác ("Gần như game nào cũng chơi"):
+        // 5. Tự động phát hiện mọi tựa game khác ("Gần như game nào cũng chơi"):
         // Nếu cửa sổ đang ở chế độ Fullscreen hoặc Borderless Fullscreen (chiếm toàn bộ màn hình và không có thanh tiêu đề chuẩn của Windows)
         if (IsWindowFullscreenOrBorderless(hwnd))
             return true;
 
         return false;
+    }
+
+    private static bool IsUnityEditorInPlayMode(IntPtr hwnd, uint threadId)
+    {
+        try
+        {
+            var gti = new GUITHREADINFO { cbSize = Marshal.SizeOf<GUITHREADINFO>() };
+            if (GetGUIThreadInfo(threadId, ref gti) && gti.hwndFocus != IntPtr.Zero)
+            {
+                string focusTitle = GetWindowTitleSafe(gti.hwndFocus);
+                if (focusTitle.Contains("GameView", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            if (!IsMouseCursorVisible())
+                return true;
+
+            if (IsWindowFullscreenOrBorderless(hwnd))
+                return true;
+        }
+        catch
+        {
+            // Ignore
+        }
+        return false;
+    }
+
+    private static bool IsMouseCursorVisible()
+    {
+        try
+        {
+            var pci = new CURSORINFO { cbSize = Marshal.SizeOf<CURSORINFO>() };
+            if (GetCursorInfo(ref pci))
+                return (pci.flags & CURSOR_SHOWING) != 0;
+        }
+        catch
+        {
+            // Ignore
+        }
+        return true;
+    }
+
+    private static string GetWindowClassNameSafe(IntPtr hwnd)
+    {
+        try
+        {
+            var sb = new StringBuilder(256);
+            if (GetClassName(hwnd, sb, sb.Capacity) > 0)
+                return sb.ToString();
+        }
+        catch
+        {
+            // Ignore
+        }
+        return "";
     }
 
     private static bool IsWindowFullscreenOrBorderless(IntPtr hwnd)

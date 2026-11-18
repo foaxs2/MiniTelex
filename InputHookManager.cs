@@ -167,7 +167,8 @@ public sealed class InputHookManager : IDisposable
         "pubg",
         "deadlock",
         "deltaforceclient-win64-shipping",
-        "crossfire"
+        "crossfire",
+        "unity"
     };
 
     private readonly TelexEngine _engine = new();
